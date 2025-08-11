@@ -15,26 +15,39 @@ class EmailService {
   private transporter: nodemailer.Transporter;
 
   constructor() {
+    // MailHog configuration - no authentication needed
     this.transporter = nodemailer.createTransport({
       host: config.email.host,
       port: config.email.port,
       secure: config.email.secure,
-      auth: {
-        user: config.email.auth.user,
-        pass: config.email.auth.pass,
-      },
+      // Only add auth if user is provided (not needed for MailHog)
+      ...(config.email.auth.user && {
+        auth: {
+          user: config.email.auth.user,
+          pass: config.email.auth.pass,
+        }
+      }),
+      // Disable TLS for MailHog
+      tls: {
+        rejectUnauthorized: false
+      }
     });
 
-    // Verify connection configuration
-    this.verifyConnection();
+    // Skip verification for MailHog (development)
+    if (config.server.nodeEnv === 'development' && config.email.host === 'localhost' && config.email.port === 1025) {
+      logger.info('✅ Email service initialized for MailHog development testing');
+      logger.info('📧 MailHog Web Interface: http://localhost:8025');
+    } else {
+      this.verifyConnection();
+    }
   }
 
   private async verifyConnection(): Promise<void> {
     try {
       await this.transporter.verify();
-      logger.info('Email service configured successfully');
+      logger.info('✅ Email service configured successfully');
     } catch (error) {
-      logger.error('Email service configuration error:', error);
+      logger.error('❌ Email service configuration error:', error);
     }
   }
 
@@ -48,10 +61,16 @@ class EmailService {
         text: options.text || this.stripHtml(options.html),
       };
 
-      await this.transporter.sendMail(mailOptions);
-      logger.info(`Email sent successfully to ${options.to}`);
+      const result = await this.transporter.sendMail(mailOptions);
+      logger.info(`📧 Email sent successfully to ${options.to}`);
+      
+      // Log MailHog access in development
+      if (config.server.nodeEnv === 'development' && config.email.port === 1025) {
+        logger.info(`📬 Check email in MailHog: http://localhost:8025`);
+        logger.info(`📩 Message ID: ${result.messageId}`);
+      }
     } catch (error) {
-      logger.error(`Failed to send email to ${options.to}:`, error);
+      logger.error(`❌ Failed to send email to ${options.to}:`, error);
       throw new AppError('Failed to send email', 500);
     }
   }

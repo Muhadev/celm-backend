@@ -134,7 +134,7 @@ export const config: Config = {
   },
 
   email: {
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    host: process.env.SMTP_HOST || 'localhost',
     port: parseInt(process.env.SMTP_PORT || '1025'),
     secure: process.env.SMTP_SECURE === 'true',
     auth: {
