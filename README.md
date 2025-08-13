@@ -1,309 +1,378 @@
-# Celm Backend Platform
+# Celm Backend - Business Registration Platform
 
-A robust, scalable Node.js + TypeScript backend for the Celm business registration platform.
+A robust, scalable Node.js + TypeScript backend API for the Celm business registration platform with multi-step onboarding and Google OAuth integration.
 
 ## 🚀 Features
 
-- **Authentication & Authorization**: JWT-based auth with refresh tokens, email verification, password reset
-- **Business Management**: Complete CRUD operations for business profiles, services, and locations  
-- **Email Service**: Nodemailer integration with professional HTML templates
-- **Database**: PostgreSQL with Knex.js ORM and migrations
-- **Caching**: Redis for session management and caching
-- **Security**: Helmet, CORS, rate limiting, input validation
-- **Logging**: Winston with different levels and file rotation
-- **Error Handling**: Centralized error handling with custom error classes
-- **Validation**: Joi schemas for request validation
-- **File Upload**: Multer with image processing capabilities
-- **Docker**: Complete containerization setup for development and production
-- **Testing**: Jest test framework setup
-- **Code Quality**: ESLint, Prettier, TypeScript strict mode
+- **Multi-Step Registration Flow**: Email → Personal Info → Business Type → Shop Details → Location
+- **Google OAuth Integration**: Seamless authentication with Google accounts
+- **JWT Authentication**: Secure token-based auth with refresh tokens
+- **Email Verification**: Professional HTML email templates with MailHog testing
+- **Database Management**: PostgreSQL with Knex.js migrations and seeds
+- **Redis Caching**: Session management and caching layer
+- **Docker Development**: Complete containerized development environment
+- **Security**: Rate limiting, CORS, input validation, password hashing
+- **Error Handling**: Centralized error management with custom error classes
+- **Logging**: Winston logger with structured logging
+- **Type Safety**: Full TypeScript implementation with strict mode
 
 ## 📋 Prerequisites
 
-- Node.js 18+ 
-- PostgreSQL 12+
-- Redis 6+
-- Docker & Docker Compose (recommended for development)
+- Docker & Docker Compose (recommended)
+- Node.js 18+ (if running locally)
+- PostgreSQL 15+ (if running locally)
+- Redis 6+ (if running locally)
 
 ## 🛠️ Quick Start
 
-### Option 1: Automated Setup (Recommended)
+### 1. Clone & Setup Environment
 
 ```bash
 # Clone the repository
 git clone <your-repo-url>
 cd celm-backend
 
-# Run the setup script (handles everything)
-./setup.sh
+# Copy environment file
+cp .env.example .env
 ```
 
-### Option 2: Manual Setup
+### 2. Configure Environment
 
-1. **Environment Configuration**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-2. **Install Dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Database Setup**
-   ```bash
-   # Option A: Using Docker (Recommended)
-   docker-compose -f docker-compose.dev.yml up -d postgres redis mailhog
-   
-   # Option B: Using local installations
-   # Ensure PostgreSQL and Redis are running locally
-   ```
-
-4. **Database Migration & Seeding**
-   ```bash
-   npm run migrate:up
-   npm run seed:run
-   ```
-
-5. **Start Development Server**
-   ```bash
-   npm run dev
-   ```
-
-## 🐳 Docker Development
-
-Start all services with Docker:
+Update `.env` with your settings:
 
 ```bash
-# Development environment
+# Core Configuration
+NODE_ENV=development
+PORT=3000
+
+# Database (Docker)
+DB_HOST=postgres
+DB_NAME=celm_db
+DB_USER=postgres
+DB_PASSWORD=password
+
+# JWT Secrets (Generate secure keys)
+JWT_SECRET=your-super-secret-jwt-key-at-least-32-characters-long
+JWT_REFRESH_SECRET=your-super-secret-refresh-key-at-least-32-characters-long
+
+# Google OAuth (Get from Google Console)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# Frontend URL
+FRONTEND_URL=http://localhost:3000
+```
+
+### 3. Start Development Environment
+
+```bash
+# Start all services (PostgreSQL, Redis, MailHog, App)
 docker-compose -f docker-compose.dev.yml up -d
 
-# Production environment
-docker-compose up -d
+# Check services are running
+docker-compose -f docker-compose.dev.yml ps
 ```
+
+### 4. Setup Database
+
+```bash
+# Run migrations
+docker-compose -f docker-compose.dev.yml exec app npm run migrate:up
+
+# Seed test data
+docker-compose -f docker-compose.dev.yml exec app npm run seed:run
+```
+
+### 5. Verify Setup
+
+```bash
+# Health check
+curl http://localhost:3000/api/v1/health
+
+# Check email interface
+open http://localhost:8025
+```
+
+## 🔑 Google OAuth Setup
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create project and enable Google+ API
+3. Create OAuth 2.0 credentials:
+   - **Authorized JavaScript Origins**: `http://localhost:3000`
+   - **Authorized Redirect URIs**: `http://localhost:3000/auth/google/callback`
+4. Copy Client ID and Secret to `.env`
 
 ## 📚 API Documentation
 
-### Authentication Endpoints
+### Authentication Flow
 
-```
-POST   /api/v1/auth/register              - User registration
-POST   /api/v1/auth/login                 - User login
-POST   /api/v1/auth/logout                - User logout
-POST   /api/v1/auth/refresh-token         - Refresh access token
-GET    /api/v1/auth/verify-email/:token   - Verify email address
-POST   /api/v1/auth/resend-verification   - Resend verification email
-POST   /api/v1/auth/forgot-password       - Request password reset
-POST   /api/v1/auth/reset-password        - Reset password
-POST   /api/v1/auth/change-password       - Change password (authenticated)
-GET    /api/v1/auth/profile               - Get user profile
-GET    /api/v1/auth/check                 - Check authentication status
+#### **Login**
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
 ```
 
-### Business Endpoints
+#### **Registration Flow (5 Steps)**
 
-```
-POST   /api/v1/business                   - Create business (authenticated)
-GET    /api/v1/business                   - Get all businesses (public)
-GET    /api/v1/business/:id               - Get business by ID (public)
-PUT    /api/v1/business/:id               - Update business (owner only)
-DELETE /api/v1/business/:id               - Delete business (owner only)
-GET    /api/v1/business/owner/me          - Get current user's businesses
-GET    /api/v1/business/owner/:ownerId    - Get businesses by owner
-POST   /api/v1/business/:id/upload-logo   - Upload business logo
-POST   /api/v1/business/:id/upload-images - Upload business images
+**Step 1: Start Registration**
+```http
+POST /api/v1/registration/start
+Content-Type: application/json
+
+{
+  "email": "newuser@example.com"
+}
 ```
 
-### User Management
+**Step 1b: Google OAuth (Alternative)**
+```http
+POST /api/v1/registration/google-auth
+Content-Type: application/json
 
-```
-GET    /api/v1/users                      - Get all users (admin only)
-GET    /api/v1/users/profile              - Get current user profile
-GET    /api/v1/users/:id                  - Get user by ID
-PUT    /api/v1/users/profile              - Update current user profile
-PUT    /api/v1/users/:id                  - Update user (admin only)
-PATCH  /api/v1/users/:id/status           - Update user status (admin only)
-PATCH  /api/v1/users/:id/role             - Update user role (admin only)
-DELETE /api/v1/users/:id                  - Delete user (admin only)
+{
+  "token": "google_id_token_here"
+}
 ```
 
-### Health Check
+**Step 2: Personal Information**
+```http
+POST /api/v1/registration/personal-info
+Content-Type: application/json
 
+{
+  "sessionToken": "session_token_from_step_1",
+  "firstName": "John",
+  "lastName": "Doe",
+  "password": "securePassword123"
+}
 ```
-GET    /health                            - Application health
-GET    /health/db                         - Database health
-GET    /health/redis                      - Redis health
-GET    /health/all                        - All services health
+
+**Step 3: Business Type**
+```http
+POST /api/v1/registration/business-type
+Content-Type: application/json
+
+{
+  "sessionToken": "session_token",
+  "businessType": "both"
+}
+```
+
+**Step 4: Shop Details**
+```http
+POST /api/v1/registration/shop-details
+Content-Type: application/json
+
+{
+  "sessionToken": "session_token",
+  "businessName": "My Awesome Business",
+  "businessDescription": "We provide amazing services"
+}
+```
+
+**Step 5: Location (Completes Registration)**
+```http
+POST /api/v1/registration/location
+Content-Type: application/json
+
+{
+  "sessionToken": "session_token",
+  "country": "Nigeria",
+  "state": "Lagos",
+  "localGovernment": "Ikeja",
+  "address": "123 Business Street"
+}
+```
+
+### Other Endpoints
+
+```http
+POST /api/v1/auth/logout              # Logout user
+POST /api/v1/auth/refresh-token       # Refresh access token
+POST /api/v1/auth/forgot-password     # Request password reset
+POST /api/v1/auth/reset-password      # Reset password with token
+GET  /api/v1/auth/check               # Check auth status
+GET  /api/v1/health                   # Health check
 ```
 
 ## 🗄️ Database Schema
 
 ### Users Table
 ```sql
-- id (UUID, PK)
-- email (String, Unique)
-- password (String, Hashed)
-- firstName (String)
-- lastName (String)
-- phoneNumber (String)
-- profileImage (String)
-- role (Enum: user, admin, super_admin)
-- status (Enum: active, inactive, suspended, pending)
-- emailVerified (Boolean)
-- emailVerificationToken (String)
-- passwordResetToken (String) 
-- passwordResetExpires (Timestamp)
-- lastLogin (Timestamp)
-- createdAt, updatedAt (Timestamps)
+id              UUID PRIMARY KEY
+email           VARCHAR UNIQUE NOT NULL
+first_name      VARCHAR NOT NULL
+last_name       VARCHAR NOT NULL
+password        VARCHAR (nullable for OAuth users)
+email_verified  BOOLEAN DEFAULT false
+shop_url        VARCHAR UNIQUE (auto-generated: businessname.celm.com)
+business_name   VARCHAR
+business_description TEXT
+business_type   VARCHAR (services/products/both)
+location        JSON (country, state, localGovernment, address)
+oauth_provider  VARCHAR (google)
+oauth_id        VARCHAR
+is_active       BOOLEAN DEFAULT true
+created_at      TIMESTAMP
+updated_at      TIMESTAMP
 ```
 
-### Businesses Table
+### Registration Sessions Table
 ```sql
-- id (UUID, PK)
-- ownerId (UUID, FK -> users.id)
-- name (String)
-- description (Text)
-- type (Enum: services, products, both)
-- services (JSON Array)
-- categories (JSON Array)
-- logo (String)
-- images (JSON Array)
-- website (String)
-- location (JSON Object)
-- contact (JSON Object)
-- status (Enum: draft, active, inactive, suspended, verified)
-- settings (JSON Object)
-- metadata (JSON Object)
-- createdAt, updatedAt (Timestamps)
+id                  UUID PRIMARY KEY
+email               VARCHAR NOT NULL
+session_token       VARCHAR UNIQUE NOT NULL
+step_data           JSON DEFAULT '{}'
+current_step        INTEGER DEFAULT 1
+total_steps         INTEGER DEFAULT 5
+email_verified      BOOLEAN DEFAULT false
+verification_token  VARCHAR
+oauth_provider      VARCHAR
+oauth_data          JSON
+expires_at          TIMESTAMP NOT NULL
+created_at          TIMESTAMP
+updated_at          TIMESTAMP
 ```
 
-## 🧪 Testing
+## 🧪 Testing with Postman
+
+### Test Data (Seeded Users)
+```json
+{
+  "john@example.com": "password123",
+  "sarah@example.com": "password123",
+  "mike@example.com": "password123",
+  "testuser@celm.com": "password123"
+}
+```
+
+### Registration Flow Test
+1. **Start**: `POST /api/v1/registration/start` with email
+2. **Verify Email**: Check MailHog at http://localhost:8025
+3. **Continue Steps**: Use session token from each response
+4. **Complete**: Receive welcome email and JWT tokens
+
+### Email Testing
+- **MailHog Interface**: http://localhost:8025
+- **SMTP**: localhost:1025 (configured automatically)
+- All emails appear in MailHog during development
+
+## 🐳 Docker Commands
 
 ```bash
-# Run all tests
-npm test
+# Start development environment
+docker-compose -f docker-compose.dev.yml up -d
 
-# Run tests in watch mode
-npm run test:watch
+# View logs
+docker-compose -f docker-compose.dev.yml logs -f app
 
-# Run tests with coverage
-npm run test:coverage
+# Stop services
+docker-compose -f docker-compose.dev.yml down
+
+# Reset database (nuclear option)
+docker-compose -f docker-compose.dev.yml down -v
+docker-compose -f docker-compose.dev.yml up -d
+docker-compose -f docker-compose.dev.yml exec app npm run migrate:up
+docker-compose -f docker-compose.dev.yml exec app npm run seed:run
+
+# Access database directly
+docker-compose -f docker-compose.dev.yml exec postgres psql -U postgres -d celm_db
 ```
-
-## 📝 Code Quality
-
-```bash
-# Lint code
-npm run lint
-
-# Fix linting issues
-npm run lint:fix
-
-# Format code
-npm run format
-```
-
-## 🔒 Security Features
-
-- **JWT Authentication**: Secure token-based authentication with refresh tokens
-- **Password Security**: bcrypt hashing with configurable rounds
-- **Rate Limiting**: Protection against brute force attacks
-- **CORS**: Configurable cross-origin resource sharing
-- **Helmet**: Comprehensive security headers
-- **Input Validation**: Joi schema validation for all endpoints
-- **SQL Injection Prevention**: Parameterized queries via Knex.js
-- **XSS Protection**: Input sanitization and output encoding
-
-## 📊 Development Tools
-
-- **Email Testing**: MailHog web interface at http://localhost:8025
-- **Database**: PostgreSQL at localhost:5432
-- **Redis**: Redis at localhost:6379
-- **Logging**: Winston with file rotation and console output
-- **Hot Reload**: tsx for development with watch mode
 
 ## 🏗️ Project Structure
 
 ```
 src/
-├── config/              # Configuration management
-├── controllers/         # Route controllers
-├── database/           # DB connection, migrations, seeds
-│   ├── migrations/     # Database migrations
-│   └── seeds/          # Database seed files
-├── middleware/         # Express middleware
-├── models/             # Data models with business logic
-├── routes/             # Express routes
-├── services/           # Business logic services
-├── templates/          # Email templates
-├── types/              # TypeScript type definitions
-└── utils/              # Utility functions
+├── auth/                      # Authentication module
+│   ├── controllers/           # Auth & registration controllers
+│   ├── middleware/            # Auth middleware
+│   ├── models/               # User & session models
+│   ├── routes/               # Auth routes
+│   ├── services/             # Auth, email, OAuth services
+│   ├── templates/            # Email templates
+│   └── types/                # Auth type definitions
+├── config/                   # App configuration
+├── database/                 # DB setup, migrations, seeds
+├── middleware/               # Global middleware
+├── routes/                   # Health routes
+├── types/                    # Global types
+├── utils/                    # Utilities (logger, errors)
+└── server.ts                 # App entry point
 ```
 
-## 🔧 Environment Variables
+## 🔧 Key Features Implemented
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NODE_ENV` | Environment | development |
-| `PORT` | Server port | 3000 |
-| `DB_HOST` | Database host | localhost |
-| `DB_PORT` | Database port | 5432 |
-| `JWT_SECRET` | JWT secret key | required |
-| `REDIS_HOST` | Redis host | localhost |
-| `SMTP_HOST` | Email SMTP host | localhost (MailHog) |
+### ✅ Multi-Step Registration
+- Email verification with professional templates
+- Personal information collection
+- Business type selection (services/products/both)
+- Shop details with auto-generated URLs
+- Location selection (country/state/local/address)
 
-See `.env.example` for complete list of environment variables.
+### ✅ Google OAuth Integration
+- Token verification with Google API
+- Seamless account creation
+- Existing account linking
 
-## 🚀 Deployment
+### ✅ Security Features
+- JWT with refresh tokens
+- Password hashing with bcrypt
+- Rate limiting and CORS
+- Input validation with Joi
+- Session management
 
-### Production Checklist
+### ✅ Email System
+- Professional HTML templates
+- Verification emails
+- Welcome emails
+- Password reset emails
+- MailHog for development testing
 
-- [ ] Environment variables configured
-- [ ] Database migrations applied
-- [ ] SSL certificates installed
-- [ ] Backup strategy implemented
-- [ ] Monitoring setup (logs, health checks)
-- [ ] Error tracking configured
-- [ ] Rate limiting configured for production
-- [ ] CORS configured for production domains
-- [ ] Email service configured (SMTP/SendGrid)
+### ✅ Database Management
+- TypeScript migrations
+- Seed data for testing
+- Foreign key relationships
+- Proper indexing
 
-### Docker Production Deployment
+## 🚀 What's Next?
 
-```bash
-# Build and start production containers
-docker-compose up -d
+This backend is ready for:
+- ✅ Frontend integration
+- ✅ Postman testing
+- ✅ Google OAuth testing
+- ✅ Email flow testing
 
-# Scale the application
-docker-compose up -d --scale app=3
-
-# View logs
-docker-compose logs -f app
-```
+### Planned Features
+- Business profile management
+- Product/service listings
+- Search and discovery
+- Reviews and ratings
+- Payment integration
+- Analytics dashboard
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Follow TypeScript best practices and coding standards
-4. Ensure all tests pass (`npm test`)
-5. Commit changes (`git commit -m 'Add amazing feature'`)
-6. Push to branch (`git push origin feature/amazing-feature`)
-7. Open Pull Request
-
-### Code Standards
-
-- Use TypeScript strict mode
-- Follow ESLint and Prettier rules
-- Write tests for new features
-- Update documentation for API changes
-- Use conventional commit messages
+2. Create feature branch (`git checkout -b feature/new-feature`)
+3. Commit changes (`git commit -m 'feat: add new feature'`)
+4. Push to branch (`git push origin feature/new-feature`)
+5. Open Pull Request
 
 ## 📞 Support
 
-For support, email support@celm.com or create an issue in the repository.
+- **Email**: support@celm.com
+- **Issues**: Create GitHub issue
+- **Documentation**: Check API endpoints above
 
 ## 📄 License
 
-This project is licensed under the MIT License.
+MIT License - see LICENSE file for details.
+
+---
+
+**🎉 Ready to test!** Start with the health endpoint: `GET http://localhost:3000/api/v1/health`
