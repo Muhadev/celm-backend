@@ -9,14 +9,14 @@ const knexConfig: Knex.Config = {
   connection: {
     host: config.database.host,
     port: config.database.port,
-    database: config.database.database,
+    database: config.database.name,  // Fixed: was config.database.database
     user: config.database.user,
     password: config.database.password,
     ssl: config.database.ssl ? { rejectUnauthorized: false } : false,
   },
   pool: {
-    min: config.database.pool.min,
-    max: config.database.pool.max,
+    min: config.database.pool.min,  // Fixed: now exists in config
+    max: config.database.pool.max,  // Fixed: now exists in config
     acquireTimeoutMillis: 30000,
     createTimeoutMillis: 30000,
     destroyTimeoutMillis: 5000,
