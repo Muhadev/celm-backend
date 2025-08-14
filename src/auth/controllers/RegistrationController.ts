@@ -41,9 +41,11 @@ const businessTypeStepSchema = Joi.object({
   businessType: Joi.string().valid(...Object.values(BusinessTypeOption)).required()
 });
 
-const shopDetailsStepSchema = Joi.object({
+const shopDetailsSchema = Joi.object({
+  sessionToken: Joi.string().required(),
   businessName: Joi.string().min(2).max(100).required(),
-  businessDescription: Joi.string().min(10).max(500).required()
+  businessDescription: Joi.string().min(10).max(500).required(),
+  customShopUrl: Joi.string().pattern(/^[a-z0-9-]+\.celm\.com$/).optional()
 });
 
 const locationStepSchema = Joi.object({
@@ -238,35 +240,59 @@ export class RegistrationController {
   // Step 4: Shop details with auto-generated URL
   submitShopDetails = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { sessionToken } = req.headers;
-      const session = await this.validateSession(sessionToken as string, RegistrationStep.BUSINESS_TYPE);
-
-      const { error, value } = shopDetailsStepSchema.validate(req.body);
-      if (error) {
-        throw new ValidationError(error.details.map(detail => detail.message).join(', '));
+      const { sessionToken, businessName, businessDescription, customShopUrl } = req.body;
+      
+      const session = await RegistrationSession.findByToken(sessionToken);
+      if (!session) {
+        res.status(400).json({
+          success: false,
+          message: 'Invalid or expired session'
+        });
+        return; // Use return instead of return res.status()
       }
 
-      const { businessName, businessDescription } = value;
+      let shopUrl: string;
+      
+      if (customShopUrl) {
+        // User provided custom URL
+        if (!RegistrationSession.validateShopUrlFormat(customShopUrl)) {
+          res.status(400).json({
+            success: false,
+            message: 'Invalid shop URL format. Use only letters, numbers, and hyphens.',
+            suggestions: await RegistrationSession.getShopUrlSuggestions(businessName)
+          });
+          return; // Use return instead of return res.status()
+        }
+        
+        if (!await RegistrationSession.isShopUrlAvailable(customShopUrl)) {
+          res.status(400).json({
+            success: false,
+            message: 'Shop URL is already taken',
+            suggestions: await RegistrationSession.getShopUrlSuggestions(businessName)
+          });
+          return; // Use return instead of return res.status()
+        }
+        
+        shopUrl = customShopUrl;
+      } else {
+        // Auto-generate unique URL
+        shopUrl = await RegistrationSession.generateUniqueShopUrl(businessName);
+      }
 
-      // Auto-generate shop URL
-      const shopUrl = await this.generateUniqueShopUrl(businessName);
-
-      const shopDetailsData = {
+      await session.updateStep(RegistrationStep.SHOP_DETAILS, {
         businessName,
         businessDescription,
-        shopUrl: `${shopUrl}.celm.com`
-      };
+        shopUrl
+      });
 
-      await session.updateStep(RegistrationStep.SHOP_DETAILS, shopDetailsData);
-      await session.nextStep();
-
-      res.status(200).json({
+      res.json({
         success: true,
-        message: 'Shop details saved',
+        message: 'Shop details saved successfully',
         data: {
           sessionToken: session.sessionToken,
           currentStep: session.currentStep,
-          generatedShopUrl: shopDetailsData.shopUrl
+          shopUrl, // Return the generated/validated URL
+          suggestions: await RegistrationSession.getShopUrlSuggestions(businessName) // For frontend display
         }
       });
     } catch (error) {
@@ -274,6 +300,43 @@ export class RegistrationController {
     }
   };
 
+  // Replace your checkShopUrlAvailability method completely:
+  checkShopUrlAvailability = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { shopUrl, businessName } = req.query;
+      
+      if (!shopUrl || typeof shopUrl !== 'string') {
+        res.status(400).json({
+          success: false,
+          message: 'Shop URL is required'
+        });
+        return; // Use return instead of return res.status()
+      }
+      
+      if (!RegistrationSession.validateShopUrlFormat(shopUrl)) {
+        res.status(400).json({
+          success: false,
+          available: false,
+          message: 'Invalid shop URL format',
+          suggestions: businessName ? 
+            await RegistrationSession.getShopUrlSuggestions(businessName as string) : []
+        });
+        return; // Use return instead of return res.status()
+      }
+      
+      const isAvailable = await RegistrationSession.isShopUrlAvailable(shopUrl);
+      
+      res.json({
+        success: true,
+        available: isAvailable,
+        message: isAvailable ? 'Shop URL is available' : 'Shop URL is already taken',
+        suggestions: !isAvailable && businessName ? 
+          await RegistrationSession.getShopUrlSuggestions(businessName as string) : []
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
   // Step 5: Location and complete registration
   submitLocation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -304,24 +367,24 @@ export class RegistrationController {
   };
 
   // Helper: Generate unique shop URL
-  private async generateUniqueShopUrl(businessName: string): Promise<string> {
-    let baseUrl = businessName
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, '')
-      .replace(/\s+/g, '-')
-      .substring(0, 30);
+  // private async generateUniqueShopUrl(businessName: string): Promise<string> {
+  //   let baseUrl = businessName
+  //     .toLowerCase()
+  //     .replace(/[^a-z0-9\s]/g, '')
+  //     .replace(/\s+/g, '-')
+  //     .substring(0, 30);
 
-    let shopUrl = baseUrl;
-    let counter = 1;
+  //   let shopUrl = baseUrl;
+  //   let counter = 1;
 
-    // Find available URL
-    while (!(await RegistrationSession.isShopUrlAvailable(shopUrl))) {
-      shopUrl = `${baseUrl}-${counter}`;
-      counter++;
-    }
+  //   // Find available URL
+  //   while (!(await RegistrationSession.isShopUrlAvailable(shopUrl))) {
+  //     shopUrl = `${baseUrl}-${counter}`;
+  //     counter++;
+  //   }
 
-    return shopUrl;
-  }
+  //   return shopUrl;
+  // }
 
   // Helper: Validate session
   private async validateSession(sessionToken: string, requiredStep: RegistrationStep): Promise<RegistrationSession> {
@@ -352,7 +415,7 @@ export class RegistrationController {
         firstName: session.stepData.step2!.firstName,
         lastName: session.stepData.step2!.lastName,
         password: session.stepData.step2!.password,
-        shopUrl: session.stepData.step4!.shopUrl.replace('.celm.com', ''),
+        shopUrl: session.stepData.step4!.shopUrl,
         businessName: session.stepData.step4!.businessName,
         businessDescription: session.stepData.step4!.businessDescription,
         businessType: session.stepData.step3!.businessType,

@@ -170,14 +170,105 @@ export class RegistrationSession implements IRegistrationSession {
   }
 
   // Generate shop URL from business name
-  static generateShopUrl(businessName: string): string {
-    const baseUrl = businessName
+  // static generateShopUrl(businessName: string): string {
+  //   const baseUrl = businessName
+  //     .toLowerCase()
+  //     .replace(/[^a-z0-9\s]/g, '')
+  //     .replace(/\s+/g, '')
+  //     .substring(0, 20);
+    
+  //   return `${baseUrl}.celm.com`;
+  // }
+
+  // Validate custom shop URL format
+  static validateShopUrlFormat(shopUrl: string): boolean {
+    const regex = /^[a-z0-9-]+\.celm\.com$/;
+    
+    if (!regex.test(shopUrl)) {
+      return false;
+    }
+    
+    const subdomain = shopUrl.replace('.celm.com', '');
+    
+    return subdomain.length >= 3 && 
+          subdomain.length <= 30 && 
+          !subdomain.startsWith('-') && 
+          !subdomain.endsWith('-') &&
+          !subdomain.includes('--');
+  }
+
+  // Generate unique shop URL with counter
+  static async generateUniqueShopUrl(businessName: string): Promise<string> {
+    const baseUrl = this.generateBaseShopUrl(businessName);
+    
+    if (await this.isShopUrlAvailable(`${baseUrl}.celm.com`)) {
+      return `${baseUrl}.celm.com`;
+    }
+    
+    const db = getDatabase();
+    let counter = 2;
+    
+    while (counter <= 999) {
+      const candidateUrl = `${baseUrl}${counter}.celm.com`;
+      
+      const existing = await db('users')
+        .where('shop_url', candidateUrl)
+        .first();
+        
+      if (!existing) {
+        return candidateUrl;
+      }
+      
+      counter++;
+    }
+    
+    const randomSuffix = Math.floor(Math.random() * 10000);
+    return `${baseUrl}${randomSuffix}.celm.com`;
+  }
+
+  // Generate base shop URL from business name
+  static generateBaseShopUrl(businessName: string): string {
+    return businessName
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, '')
       .replace(/\s+/g, '')
       .substring(0, 20);
+  }
+
+  // Get suggested alternatives for a shop URL
+  static async getShopUrlSuggestions(businessName: string, count: number = 5): Promise<string[]> {
+    const baseUrl = this.generateBaseShopUrl(businessName);
+    const suggestions: string[] = [];
+    const db = getDatabase();
     
-    return `${baseUrl}.celm.com`;
+    const originalUrl = `${baseUrl}.celm.com`;
+    if (await this.isShopUrlAvailable(originalUrl)) {
+      suggestions.push(originalUrl);
+    }
+    
+    for (let i = 2; suggestions.length < count && i <= 20; i++) {
+      const candidate = `${baseUrl}${i}.celm.com`;
+      if (await this.isShopUrlAvailable(candidate)) {
+        suggestions.push(candidate);
+      }
+    }
+    
+    const variations = [
+      `${baseUrl}shop.celm.com`,
+      `${baseUrl}store.celm.com`,
+      `${baseUrl}biz.celm.com`,
+      `my${baseUrl}.celm.com`,
+      `the${baseUrl}.celm.com`
+    ];
+    
+    for (const variation of variations) {
+      if (suggestions.length >= count) break;
+      if (await this.isShopUrlAvailable(variation)) {
+        suggestions.push(variation);
+      }
+    }
+    
+    return suggestions.slice(0, count);
   }
 
   // Check if shop URL is available

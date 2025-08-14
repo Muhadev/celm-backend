@@ -18,6 +18,9 @@ router.post('/start', registrationRateLimit, registrationController.startRegistr
 // Verify email
 router.post('/verify-email/:token', registrationController.verifyEmail);
 
+// for URL availability checking:
+router.get('/check-shop-url', registrationController.checkShopUrlAvailability);
+
 // Google OAuth registration
 router.post('/google', registrationController.googleAuth);
 

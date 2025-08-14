@@ -12,8 +12,7 @@ import { connectRedis } from '@/database/redis';
 import { authRoutes } from '@/auth/routes/authRoutes';
 import { registrationRoutes } from '@/auth/routes/registrationRoutes';
 import { healthRoutes } from '@/routes/healthRoutes';
-import { errorHandler } from '@/middleware/errorHandler';
-import { notFoundHandler } from '@/middleware/notFoundHandler';
+import { errorHandler, notFoundHandler } from '@/middleware/errorHandler';
 import { logger } from '@/utils/logger';
 
 declare global {
